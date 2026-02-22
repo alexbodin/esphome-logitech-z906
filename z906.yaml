@@ -1,6 +1,15 @@
 esphome:
   name: z906
   friendly_name: Logitech Z906
+  includes:
+    - Z906.h
+    - z906_component.h
+    - z906_globals.h
+  on_boot:
+    priority: 800.0
+    then:
+      - lambda: |-
+          ensure_z906_initialized(id(z906_uart));
 
 esp32:
   board: esp32dev
@@ -42,653 +51,257 @@ uart:
   data_bits: 8
   parity: ODD
   stop_bits: 1
-#  debug:
-#    direction: BOTH
 
 switch:
   - platform: gpio
     pin: GPIO4
     inverted: true
-    name: "Z906 Power Toggle"
+    name: "Power Toggle"
 
 button:
   - platform: restart
     name: "Restart ESP"
+
   - platform: template
-    name: "Z906 Power ON"
+    name: "Standby ON"
     on_press:
       - lambda: |-
-          // Flush RX buffer
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(100);
-          // Send ON command
-          uint8_t cmd = 0x11;
-          id(z906_uart).write_array(&cmd, 1);
-          delay(300); // Wait for Z906 to update state
-          // Update power state sensor
+          z906_device_global->standby_on();
           id(z906_power_state).update();
 
   - platform: template
-    name: "Z906 Power OFF"
+    name: "Standby OFF"
     on_press:
       - lambda: |-
-          // Flush RX buffer
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(100);
-          // Send OFF command
-          uint8_t cmd = 0x10;
-          id(z906_uart).write_array(&cmd, 1);
-          delay(300); // Wait for Z906 to update state
-          // Reset power-up time and save EEPROM
-          uint8_t cmd_save[] = {0x30, 0x37, 0x36};
-          id(z906_uart).write_array(cmd_save, sizeof(cmd_save));
-          delay(300); // Wait for Z906 to update state
-          // Update power state sensor
+          z906_device_global->standby_off();
           id(z906_power_state).update();
 
   - platform: template
-    name: "Z906 Mute ON"
+    name: "Volume Mute ON"
     on_press:
       - lambda: |-
-          // Flush RX buffer
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(100);
-          // Send MUTE ON command
-          uint8_t cmd = 0x38;
-          id(z906_uart).write_array(&cmd, 1);
-          delay(300); // Wait for Z906 to update state
-          // Update mute state sensor
-          id(z906_mute_state).update();
+          z906_device_global->mute_on();
+          id(z906_mute_state).publish_state(1);
 
   - platform: template
-    name: "Z906 Mute OFF"
+    name: "Volume Mute OFF"
     on_press:
       - lambda: |-
-          // Flush RX buffer
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(100);
-          // Send MUTE OFF command
-          uint8_t cmd = 0x39;
-          id(z906_uart).write_array(&cmd, 1);
-          delay(300); // Wait for Z906 to update state
-          // Update mute state sensor
-          id(z906_mute_state).update();
+          z906_device_global->mute_off();
+          id(z906_mute_state).publish_state(0);
 
   # Input selection buttons
   #input 1 TRS
   - platform: template
-    name: "Z906 Input 1 (3.5mm TRS, 6 channels)"
+    name: "Input 1 (3.5mm TRS, 6 channels)"
     on_press:
       - lambda: |-
-          // Flush RX buffer
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          // Sequence: mute, input, effect, unmute
-          uint8_t seq[] = {0x09, 0x02, 0x35, 0x08};
-          id(z906_uart).write_array(seq, sizeof(seq));
+          z906_device_global->input_1();
       - delay: 500ms
       - lambda: |-
           id(z906_input_active).update();
 
   # Input 2 (RCA, 2 channels)
   - platform: template
-    name: "Z906 Input 2 (RCA, 2 channels)"
+    name: "Input 2 (RCA, 2 channels)"
     on_press:
       - lambda: |-
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x09, 0x05, 0x16, 0x08};
-          id(z906_uart).write_array(seq, sizeof(seq));
+          z906_device_global->input_2();
       - delay: 500ms
       - lambda: |-
           id(z906_input_active).update();
 
   # Input 3 (Optical)
   - platform: template
-    name: "Z906 Input 3 (Optical)"
+    name: "Input 3 (Optical)"
     on_press:
       - lambda: |-
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x09, 0x03, 0x14, 0x08};
-          id(z906_uart).write_array(seq, sizeof(seq));
+          z906_device_global->input_3();
       - delay: 500ms
       - lambda: |-
           id(z906_input_active).update();
 
   # Input 4 (Optical)
   - platform: template
-    name: "Z906 Input 4 (Optical)"
+    name: "Input 4 (Optical)"
     on_press:
       - lambda: |-
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x09, 0x04, 0x14, 0x08};
-          id(z906_uart).write_array(seq, sizeof(seq));
+          z906_device_global->input_4();
       - delay: 500ms
       - lambda: |-
           id(z906_input_active).update();
+
   # Input 5 (RCA, S/PDIF 75Ω coaxial) (not 100% sure, i cannot test it)
   - platform: template
-    name: "Z906 Input 5 (COAXIAL)"
+    name: "Input 5 (COAXIAL)"
     on_press:
       - lambda: |-
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x09, 0x06, 0x16, 0x08};
-          id(z906_uart).write_array(seq, sizeof(seq));
+          z906_device_global->input_5();
       - delay: 500ms
       - lambda: |-
           id(z906_input_active).update();
+
   # Input 6 AUX
   - platform: template
-    name: "Z906 Input 6 (AUX)"
+    name: "Input 6 (AUX)"
     on_press:
       - lambda: |-
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x09, 0x07, 0x16, 0x08};
-          id(z906_uart).write_array(seq, sizeof(seq));
+          z906_device_global->input_aux();
       - delay: 500ms
       - lambda: |-
           id(z906_input_active).update();
 
   - platform: template
-    name: "Main Volume Up"
+    name: "Volume Main Up"
     on_press:
       - lambda: |-
-          // Flush RX buffer before sending command
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x08}; // LEVEL_MAIN_UP
-          id(z906_uart).write_array(seq, sizeof(seq));
-          delay(500);
-          id(z906_main_volume).update(); // Update main volume sensor
+          z906_device_global->main_volume_up();
+          id(z906_main_volume).update();
 
   - platform: template
-    name: "Main Volume Down"
+    name: "Volume Main Down"
     on_press:
       - lambda: |-
-          // Flush RX buffer before sending command
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x09}; // LEVEL_MAIN_DOWN
-          id(z906_uart).write_array(seq, sizeof(seq));
-          delay(500);
-          id(z906_main_volume).update(); // Update main volume sensor
+          z906_device_global->main_volume_down();
+          id(z906_main_volume).update();
 
-  # Sub Level Up
   - platform: template
-    name: "Sub Volume Up"
+    name: "Volume Sub Up"
     on_press:
       - lambda: |-
-          // Flush RX buffer before sending command
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x0A}; // LEVEL_SUB_UP
-          id(z906_uart).write_array(seq, sizeof(seq));
-          delay(500);
-          id(z906_sub_volume).update(); // Update sub volume sensor
+          z906_device_global->sub_volume_up();
+          id(z906_sub_volume).update();
 
-  # Sub Level Down
   - platform: template
-    name: "Sub Volume Down"
+    name: "Volume Sub Down"
     on_press:
       - lambda: |-
-          // Flush RX buffer before sending command
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x0B}; // LEVEL_SUB_DOWN
-          id(z906_uart).write_array(seq, sizeof(seq));
-          delay(500);
-          id(z906_sub_volume).update(); // Update sub volume sensor
+          z906_device_global->sub_volume_down();
+          id(z906_sub_volume).update();
 
-  # Center Level Up
   - platform: template
-    name: "Center Volume Up"
+    name: "Volume Center Up"
     on_press:
       - lambda: |-
-          // Flush RX buffer before sending command
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x0C}; // LEVEL_CENTER_UP
-          id(z906_uart).write_array(seq, sizeof(seq));
-          delay(500);
-          id(z906_center_volume).update(); // Update center volume sensor
+          z906_device_global->center_volume_up();
+          id(z906_center_volume).update();
 
-  # Center Level Down
   - platform: template
-    name: "Center Volume Down"
+    name: "Volume Center Down"
     on_press:
       - lambda: |-
-          // Flush RX buffer before sending command
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x0D}; // LEVEL_CENTER_DOWN
-          id(z906_uart).write_array(seq, sizeof(seq));
-          delay(500);
-          id(z906_center_volume).update(); // Update center volume sensor
+          z906_device_global->center_volume_down();
+          id(z906_center_volume).update();
 
-  # Rear Level Up
   - platform: template
-    name: "Rear Volume Up"
+    name: "Volume Rear Up"
     on_press:
       - lambda: |-
-          // Flush RX buffer before sending command
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x0E}; // LEVEL_REAR_UP
-          id(z906_uart).write_array(seq, sizeof(seq));
-          delay(500);
-          id(z906_rear_volume).update(); // Update rear volume sensor
+          z906_device_global->rear_volume_up();
+          id(z906_rear_volume).update();
 
-  # Rear Level Down
   - platform: template
-    name: "Rear Volume Down"
+    name: "Volume Rear Down"
     on_press:
       - lambda: |-
-          // Flush RX buffer before sending command
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          uint8_t seq[] = {0x0F}; // LEVEL_REAR_DOWN
-          id(z906_uart).write_array(seq, sizeof(seq));
-          delay(500);
-          id(z906_rear_volume).update(); // Update rear volume sensor
+          z906_device_global->rear_volume_down();
+          id(z906_rear_volume).update();
 
   #Read full status command
   - platform: template
-    name: "Z906 Read Full Status"
+    name: "Read Full Status"
     on_press:
       - lambda: |-
-          // Flush RX buffer before sending command
-          while (id(z906_uart).available() > 0) {
-            uint8_t dummy;
-            id(z906_uart).read_byte(&dummy);
-          }
-          delay(500);
-          // Send read status command
-          uint8_t req = 0x34;
-          ESP_LOGI("z906", "Sending read status command: 0x34");
-          id(z906_uart).write_array(&req, 1);
-          uint32_t start = millis();
-          // Wait for at least 23 bytes to arrive
-          while (id(z906_uart).available() < 23 && millis() - start < 300) {
-            delay(1);
-          }
-          if (id(z906_uart).available() >= 23) {
-            // Find header 0xAA
-            while (id(z906_uart).available() >= 23) {
-              uint8_t peek;
-              id(z906_uart).peek_byte(&peek);
-              if (peek == 0xAA) {
-                uint8_t dummy;
-                id(z906_uart).read_byte(&dummy); // discard 0xAA
-                uint8_t resp[22];
-                id(z906_uart).read_array(resp, 22);
-                ESP_LOGI("z906", "Full Response: AA %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-                  resp[0], resp[1], resp[2], resp[3], resp[4], resp[5], resp[6], resp[7],
-                  resp[8], resp[9], resp[10], resp[11], resp[12], resp[13], resp[14], resp[15],
-                  resp[16], resp[17], resp[18], resp[19], resp[20], resp[21]);
-                break;
-              } else {
-                uint8_t dummy;
-                id(z906_uart).read_byte(&dummy);
-              }
-            }
-          } else {
-            ESP_LOGW("z906", "No valid response received from UART.");
+          z906_device_global->get_full_status();
+
+  # Effects
+  - platform: template
+    name: "Effect 3D"
+    on_press:
+      - lambda: |-
+          z906_device_global->effect_3D();
+
+  - platform: template
+    name: "Effect 4.1"
+    on_press:
+      - lambda: |-
+          z906_device_global->effect_41();
+
+  - platform: template
+    name: "Effect 2.1"
+    on_press:
+      - lambda: |-
+          z906_device_global->effect_21();
+
+  - platform: template
+    name: "Effect Off"
+    on_press:
+      - lambda: |-
+          z906_device_global->effect_no();
+
+interval:
+  - interval: 100ms
+    then:
+      - lambda: |-
+          if (z906_device_global != nullptr) {
+              z906_device_global->loop();
           }
 
 sensor:
-  #power sensor with flush of RX buffer
   - platform: template
-    name: "Z906 Power State"
-    #    internal: true
+    name: "Standby State"
     id: z906_power_state
     lambda: |-
-      // Flush RX buffer before sending command
-      while (id(z906_uart).available() > 0) {
-        uint8_t dummy;
-        id(z906_uart).read_byte(&dummy);
-      } 
-      uint8_t req[] = {0x34};
-      id(z906_uart).write_array(req, sizeof(req));
-      uint32_t start = millis();
-      // Wait for at least 23 bytes to arrive
-      while (id(z906_uart).available() < 23 && millis() - start < 200) {
-        delay(1);
-      }
-      // Find header 0xAA
-      while (id(z906_uart).available() >= 23) {
-        uint8_t peek;
-        id(z906_uart).peek_byte(&peek);
-        if (peek == 0xAA) {
-          uint8_t dummy;
-          id(z906_uart).read_byte(&dummy); // discard 0xAA
-          uint8_t resp[22];
-          id(z906_uart).read_array(resp, 22);
-          // resp[19]: 0x00 ON, 0x01 standby
-          return (resp[19] == 0x00) ? 1 : 0;
-        } else {
-          uint8_t dummy;
-          id(z906_uart).read_byte(&dummy);
-        }
-      }
-      return NAN;
+      return z906_device_global->get_power_status();
+    internal: true
     update_interval: never
-  # Mute sensor
   - platform: template
-    name: "Z906 Mute State"
-    #    internal: true
-    id: z906_mute_state
-    lambda: |-
-      // Flush RX buffer before sending command
-      while (id(z906_uart).available() > 0) {
-        uint8_t dummy;
-        id(z906_uart).read_byte(&dummy);
-      } 
-      uint8_t req[] = {0x34};
-      id(z906_uart).write_array(req, sizeof(req));
-      uint32_t start = millis();
-      // Wait for at least 23 bytes to arrive
-      while (id(z906_uart).available() < 23 && millis() - start < 200) {
-        delay(1);
-      }
-      // Find header 0xAA
-      while (id(z906_uart).available() >= 23) {
-        uint8_t peek;
-        id(z906_uart).peek_byte(&peek);
-        if (peek == 0xAA) {
-          uint8_t dummy;
-          id(z906_uart).read_byte(&dummy); // discard 0xAA
-          uint8_t resp[22];
-          id(z906_uart).read_array(resp, 22);
-          // resp[7]: 0x00 unmuted, 0x01 muted
-          return (resp[7] == 0x00) ? 1 : 0;
-        } else {
-          uint8_t dummy;
-          id(z906_uart).read_byte(&dummy);
-        }
-      }
-      return NAN;
-    update_interval: never
-  #input sensor
-  - platform: template
-    name: "Z906 Input Active"
-    #    internal: true
+    name: "Input Active"
     id: z906_input_active
     lambda: |-
-      // Flush RX buffer before sending command
-      while (id(z906_uart).available() > 0) {
-        uint8_t dummy;
-        id(z906_uart).read_byte(&dummy);
-      }
-      uint8_t req[] = {0x34};
-      id(z906_uart).write_array(req, sizeof(req));
-      uint32_t start = millis();
-      while (id(z906_uart).available() < 23 && millis() - start < 200) {
-        delay(1);
-      }
-      while (id(z906_uart).available() >= 23) {
-        uint8_t peek;
-        id(z906_uart).peek_byte(&peek);
-        if (peek == 0xAA) {
-          uint8_t dummy;
-          id(z906_uart).read_byte(&dummy); // discard 0xAA
-          uint8_t resp[22];
-          id(z906_uart).read_array(resp, 22);
-          // resp[6] = active input (0 = input 1, 1 = input 2, ... 5 = input 6)
-          return resp[6];
-        } else {
-          uint8_t dummy;
-          id(z906_uart).read_byte(&dummy);
-        }
-      }
-      return NAN;
+      return z906_device_global->get_current_input();
     update_interval: never
-  #volume sensor
   - platform: template
-    name: "Z906 Main Volume"
-    internal: true
+    name: "Volume Main State"
     id: z906_main_volume
     lambda: |-
-      // Flush RX buffer before sending command
-       while (id(z906_uart).available() > 0) {
-         uint8_t dummy;
-         id(z906_uart).read_byte(&dummy);
-       }
-       uint8_t req[] = {0x34};
-       ESP_LOGI("z906", "Sending volume state request: 0x34");
-       id(z906_uart).write_array(req, sizeof(req));
-       uint32_t start = millis();
-       int wait_bytes = 0;
-       while (id(z906_uart).available() < 23 && millis() - start < 200) {
-         delay(1);
-         wait_bytes = id(z906_uart).available();
-       }
-       ESP_LOGI("z906", "Bytes available after wait: %d", wait_bytes);
-       int bytes_checked = 0;
-       while (id(z906_uart).available() >= 23) {
-         uint8_t peek;
-         id(z906_uart).peek_byte(&peek);
-         ESP_LOGI("z906", "Peek byte %d: %02X", bytes_checked, peek);
-         bytes_checked++;
-         if (peek == 0xAA) {
-           ESP_LOGI("z906", "Found header 0xAA, reading response...");
-           uint8_t dummy;
-           id(z906_uart).read_byte(&dummy); // discard 0xAA
-           uint8_t resp[22];
-           id(z906_uart).read_array(resp, 22);
-           ESP_LOGI("z906", "Response: AA %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-             resp[0], resp[1], resp[2], resp[3], resp[4], resp[5], resp[6], resp[7],
-             resp[8], resp[9], resp[10], resp[11], resp[12], resp[13], resp[14], resp[15],
-             resp[16], resp[17], resp[18], resp[19], resp[20], resp[21]);
-           ESP_LOGI("z906", "Main volume (resp[2]): %d", resp[2]);
-           return resp[2];
-         } else {
-           uint8_t dummy;
-           id(z906_uart).read_byte(&dummy);
-         }
-       }
-       ESP_LOGW("z906", "No valid response found in UART buffer.");
-       return NAN;
+      return z906_device_global->get_main_volume();
     update_interval: never
   - platform: template
-    name: "Z906 Rear Volume"
-    internal: true
+    name: "Volume Rear State"
     id: z906_rear_volume
     lambda: |-
-      // Flush RX buffer before sending command
-       while (id(z906_uart).available() > 0) {
-         uint8_t dummy;
-         id(z906_uart).read_byte(&dummy);
-       }
-       uint8_t req[] = {0x34};
-       ESP_LOGI("z906", "Sending volume state request: 0x34");
-       id(z906_uart).write_array(req, sizeof(req));
-       uint32_t start = millis();
-       int wait_bytes = 0;
-       while (id(z906_uart).available() < 23 && millis() - start < 200) {
-         delay(1);
-         wait_bytes = id(z906_uart).available();
-       }
-       ESP_LOGI("z906", "Bytes available after wait: %d", wait_bytes);
-       int bytes_checked = 0;
-       while (id(z906_uart).available() >= 23) {
-         uint8_t peek;
-         id(z906_uart).peek_byte(&peek);
-         ESP_LOGI("z906", "Peek byte %d: %02X", bytes_checked, peek);
-         bytes_checked++;
-         if (peek == 0xAA) {
-           ESP_LOGI("z906", "Found header 0xAA, reading response...");
-           uint8_t dummy;
-           id(z906_uart).read_byte(&dummy); // discard 0xAA
-           uint8_t resp[22];
-           id(z906_uart).read_array(resp, 22);
-           ESP_LOGI("z906", "Response: AA %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-             resp[0], resp[1], resp[2], resp[3], resp[4], resp[5], resp[6], resp[7],
-             resp[8], resp[9], resp[10], resp[11], resp[12], resp[13], resp[14], resp[15],
-             resp[16], resp[17], resp[18], resp[19], resp[20], resp[21]);
-           ESP_LOGI("z906", "Rear volume (resp[3]): %d", resp[3]);
-           return resp[3];
-         } else {
-           uint8_t dummy;
-           id(z906_uart).read_byte(&dummy);
-         }
-       }
-       ESP_LOGW("z906", "No valid response found in UART buffer.");
-       return NAN;
+      return z906_device_global->get_rear_volume();
     update_interval: never
   - platform: template
-    name: "Z906 Center Volume"
-    internal: true
+    name: "Volume Center State"
     id: z906_center_volume
     lambda: |-
-      // Flush RX buffer before sending command
-       while (id(z906_uart).available() > 0) {
-         uint8_t dummy;
-         id(z906_uart).read_byte(&dummy);
-       }
-       uint8_t req[] = {0x34};
-       ESP_LOGI("z906", "Sending volume state request: 0x34");
-       id(z906_uart).write_array(req, sizeof(req));
-       uint32_t start = millis();
-       int wait_bytes = 0;
-       while (id(z906_uart).available() < 23 && millis() - start < 200) {
-         delay(1);
-         wait_bytes = id(z906_uart).available();
-       }
-       ESP_LOGI("z906", "Bytes available after wait: %d", wait_bytes);
-       int bytes_checked = 0;
-       while (id(z906_uart).available() >= 23) {
-         uint8_t peek;
-         id(z906_uart).peek_byte(&peek);
-         ESP_LOGI("z906", "Peek byte %d: %02X", bytes_checked, peek);
-         bytes_checked++;
-         if (peek == 0xAA) {
-           ESP_LOGI("z906", "Found header 0xAA, reading response...");
-           uint8_t dummy;
-           id(z906_uart).read_byte(&dummy); // discard 0xAA
-           uint8_t resp[22];
-           id(z906_uart).read_array(resp, 22);
-           ESP_LOGI("z906", "Response: AA %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-             resp[0], resp[1], resp[2], resp[3], resp[4], resp[5], resp[6], resp[7],
-             resp[8], resp[9], resp[10], resp[11], resp[12], resp[13], resp[14], resp[15],
-             resp[16], resp[17], resp[18], resp[19], resp[20], resp[21]);
-           ESP_LOGI("z906", "Center volume (resp[4]): %d", resp[4]);
-           return resp[4];
-         } else {
-           uint8_t dummy;
-           id(z906_uart).read_byte(&dummy);
-         }
-       }
-       ESP_LOGW("z906", "No valid response found in UART buffer.");
-       return NAN;
+      return z906_device_global->get_center_volume();
     update_interval: never
   - platform: template
-    name: "Z906 Sub Volume"
-    internal: true
+    name: "Volume Sub State"
     id: z906_sub_volume
     lambda: |-
-      // Flush RX buffer before sending command
-       while (id(z906_uart).available() > 0) {
-         uint8_t dummy;
-         id(z906_uart).read_byte(&dummy);
-       }
-       uint8_t req[] = {0x34};
-       ESP_LOGI("z906", "Sending volume state request: 0x34");
-       id(z906_uart).write_array(req, sizeof(req));
-       uint32_t start = millis();
-       int wait_bytes = 0;
-       while (id(z906_uart).available() < 23 && millis() - start < 200) {
-         delay(1);
-         wait_bytes = id(z906_uart).available();
-       }
-       ESP_LOGI("z906", "Bytes available after wait: %d", wait_bytes);
-       int bytes_checked = 0;
-       while (id(z906_uart).available() >= 23) {
-         uint8_t peek;
-         id(z906_uart).peek_byte(&peek);
-         ESP_LOGI("z906", "Peek byte %d: %02X", bytes_checked, peek);
-         bytes_checked++;
-         if (peek == 0xAA) {
-           ESP_LOGI("z906", "Found header 0xAA, reading response...");
-           uint8_t dummy;
-           id(z906_uart).read_byte(&dummy); // discard 0xAA
-           uint8_t resp[22];
-           id(z906_uart).read_array(resp, 22);
-           ESP_LOGI("z906", "Response: AA %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-             resp[0], resp[1], resp[2], resp[3], resp[4], resp[5], resp[6], resp[7],
-             resp[8], resp[9], resp[10], resp[11], resp[12], resp[13], resp[14], resp[15],
-             resp[16], resp[17], resp[18], resp[19], resp[20], resp[21]);
-           ESP_LOGI("z906", "Center volume (resp[5]): %d", resp[5]);
-           return resp[5];
-         } else {
-           uint8_t dummy;
-           id(z906_uart).read_byte(&dummy);
-         }
-       }
-       ESP_LOGW("z906", "No valid response found in UART buffer.");
-       return NAN;
+      return z906_device_global->get_sub_volume();
+    update_interval: never
+  - platform: template
+    name: "Temperature"
+    id: z906_temperature
+    unit_of_measurement: "°C"
+    lambda: |-
+      return z906_device_global->get_temperature();
+    update_interval: never
+  - platform: template
+    name: "Volume Mute State"
+    id: z906_mute_state
+    lambda: |-
+      return 0;
     update_interval: never
 
 binary_sensor:
   - platform: template
-    name: "Z906 Power State (ON/OFF)"
+    name: "Standby State (ON/OFF)"
     lambda: |-
       return id(z906_power_state).state == 1;
     device_class: power
