@@ -16,174 +16,138 @@ public:
     // ESPHome calls this method once to initialize the component
     void setup() override
     {
-        z906->print_status();
+        z906->read_full_status();
     }
 
-    // ESPHome calls this method every loop
-    void loop() override
+    uint8_t *read_full_status()
     {
-        z906->update();
-    }
-
-    // Generic method to interact with the Z906
-    int send_command(uint8_t cmd)
-    {
-        return z906->cmd(cmd);
-    }
-
-    // Standby Controls
-    int standby_on()
-    {
-        return z906->cmd(PWM_ON);
-    }
-    int standby_off()
-    {
-        return z906->cmd(PWM_OFF);
+        // Update the status and print it for debugging
+        z906->read_full_status();
+        return z906->status;
     }
 
     // Input Selection
     // Input 1 - 3.5mm TRS, 6 channels
-    int input_1()
+    void input_1()
     {
-        return z906->cmd({LEVEL_MAIN_DOWN, SELECT_INPUT_1, SELECT_EFFECT_NO, LEVEL_MAIN_UP});
+        z906->cmd({MUTE_ON,
+                   SELECT_INPUT_1,
+                   SELECT_EFFECT_NO,
+                   MUTE_OFF});
     }
     // Input 2 - RCA, 2 channels
-    int input_2()
+    void input_2()
     {
-        return z906->cmd({LEVEL_MAIN_DOWN,
-                          SELECT_INPUT_2,
-                          SELECT_EFFECT_21,
-                          LEVEL_MAIN_UP});
+        z906->cmd({MUTE_ON,
+                   SELECT_INPUT_2,
+                   SELECT_EFFECT_41,
+                   MUTE_OFF});
     }
     // Input 3 - Optical
-    int input_3()
+    void input_3()
     {
-        return z906->cmd({LEVEL_MAIN_DOWN,
-                          SELECT_INPUT_3,
-                          SELECT_EFFECT_3D,
-                          LEVEL_MAIN_UP});
+        z906->cmd({MUTE_ON,
+                   SELECT_INPUT_3,
+                   SELECT_EFFECT_41,
+                   MUTE_OFF});
     }
     // Input 4 - Optical
-    int input_4()
+    void input_4()
     {
-        return z906->cmd({LEVEL_MAIN_DOWN,
-                          SELECT_INPUT_4,
-                          SELECT_EFFECT_3D,
-                          LEVEL_MAIN_UP});
+        z906->cmd({MUTE_ON,
+                   SELECT_INPUT_4,
+                   SELECT_EFFECT_41,
+                   MUTE_OFF});
     }
     // Input 5 - COAXIAL
-    int input_5()
+    void input_5()
     {
-        return z906->cmd({LEVEL_MAIN_DOWN,
-                          SELECT_INPUT_5,
-                          SELECT_EFFECT_21,
-                          LEVEL_MAIN_UP});
+        z906->cmd({MUTE_ON,
+                   SELECT_INPUT_5,
+                   SELECT_EFFECT_41,
+                   MUTE_OFF});
     }
     // Input 6 - AUX
-    int input_aux()
+    void input_aux()
     {
-        return z906->cmd({LEVEL_MAIN_DOWN,
-                          SELECT_INPUT_AUX,
-                          SELECT_EFFECT_21,
-                          LEVEL_MAIN_UP});
+        z906->cmd({MUTE_ON,
+                   SELECT_INPUT_AUX,
+                   SELECT_EFFECT_41,
+                   MUTE_OFF});
     }
 
-    // Volume Controls
-    int main_volume_up()
-    {
-        return z906->cmd(LEVEL_MAIN_UP);
-    }
-    int main_volume_down()
-    {
-        return z906->cmd(LEVEL_MAIN_DOWN);
-    }
-    int sub_volume_up()
-    {
-        return z906->cmd(LEVEL_SUB_UP);
-    }
-    int sub_volume_down()
-    {
-        return z906->cmd(LEVEL_SUB_DOWN);
-    }
-    int center_volume_up()
-    {
-        return z906->cmd(LEVEL_CENTER_UP);
-    }
-    int center_volume_down()
-    {
-        return z906->cmd(LEVEL_CENTER_DOWN);
-    }
-    int rear_volume_up()
-    {
-        return z906->cmd(LEVEL_REAR_UP);
-    }
-    int rear_volume_down()
-    {
-        return z906->cmd(LEVEL_REAR_DOWN);
-    }
-    int mute_on()
-    {
-        return z906->cmd(MUTE_ON);
-    }
-    int mute_off()
-    {
-        return z906->cmd(MUTE_OFF);
-    }
-
-    // Effects
-    int effect_3D()
-    {
-        return z906->cmd(SELECT_EFFECT_3D);
-    }
-    int effect_41()
-    {
-        return z906->cmd(SELECT_EFFECT_41);
-    }
-    int effect_21()
-    {
-        return z906->cmd(SELECT_EFFECT_21);
-    }
-    int effect_no()
-    {
-        return z906->cmd(SELECT_EFFECT_NO);
-    }
-
-    // Requests
-    int get_power_status()
-    {
-        return z906->request(z906->STATUS_STBY);
-    }
-    int get_current_input()
-    {
-        return z906->request(z906->STATUS_CURRENT_INPUT);
-    }
-    int get_main_volume()
-    {
-        return z906->request(z906->STATUS_MAIN_LEVEL);
-    }
-    int get_rear_volume()
-    {
-        return z906->request(z906->STATUS_REAR_LEVEL);
-    }
-    int get_center_volume()
-    {
-        return z906->request(z906->STATUS_CENTER_LEVEL);
-    }
-    int get_sub_volume()
-    {
-        return z906->request(z906->STATUS_SUB_LEVEL);
-    }
     int get_temperature()
     {
-        return z906->main_sensor();
-    }
-    void get_full_status()
-    {
-        z906->print_status();
+        return z906->get_temperature();
     }
 
-private:
+    // Generic method to interact with the Z906
+    void cmd(uint8_t cmd)
+    {
+        z906->cmd(cmd);
+    }
+
+    void cmd(std::vector<uint8_t> cmd)
+    {
+        z906->cmd(cmd);
+    }
+
+    void send_command_str(std::string input)
+    {
+        std::vector<uint8_t> bytes;
+
+        // Replace commas with spaces
+        for (auto &c : input)
+        {
+            if (c == ',')
+                c = ' ';
+        }
+
+        const char *ptr = input.c_str();
+        char *end;
+
+        while (*ptr != '\0')
+        {
+            // Skip spaces
+            while (*ptr == ' ')
+            {
+                ptr++;
+            }
+
+            if (*ptr == '\0')
+            {
+                break;
+            }
+
+            unsigned long value = strtoul(ptr, &end, 0);
+
+            if (ptr == end)
+            {
+                break; // no conversion
+            }
+
+            if (value <= 255)
+            {
+                bytes.push_back((uint8_t)value);
+            }
+
+            ptr = end;
+        }
+
+        if (!bytes.empty())
+        {
+            z906->cmd(bytes);
+            z906->read_buffer();
+        }
+        else
+        {
+            ESP_LOGW("z906", "No valid bytes parsed");
+        }
+    }
+
     Z906 *z906;
+
+private:
     uart::UARTComponent *uart_component;
 };
 

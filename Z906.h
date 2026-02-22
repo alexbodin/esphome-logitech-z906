@@ -82,14 +82,16 @@ class Z906
 public:
     Z906(uart::UARTComponent *uart);
 
-    int cmd(uint8_t);
-    int cmd(std::vector<uint8_t>);
-    int request(uint8_t);
+    uint8_t status[STATUS_TOTAL_LENGTH];
+
+    void cmd(uint8_t);
+    void cmd(std::vector<uint8_t>);
     int update();
-    void print_status();
+    void read_buffer();
+    void read_full_status();
     void flush_rx();
 
-    uint8_t main_sensor();
+    uint8_t get_temperature();
 
     // Status constants (made public for component access)
     const uint8_t STATUS_STX = 0x00;
@@ -123,7 +125,6 @@ private:
 
     uart::UARTComponent *dev_uart;
     uint8_t LRC(uint8_t *, uint8_t);
-    uint8_t status[STATUS_TOTAL_LENGTH];
 };
 
 // Implementation inline to avoid linker errors with ESPHome includes
@@ -137,10 +138,8 @@ inline Z906::Z906(uart::UARTComponent *uart)
 inline uint8_t Z906::LRC(uint8_t *pData, uint8_t length)
 {
     uint8_t LRC = 0;
-
     for (int i = 1; i < length - 1; i++)
         LRC -= pData[i];
-
     return LRC;
 }
 
@@ -155,6 +154,9 @@ inline void Z906::flush_rx()
 
 inline int Z906::update()
 {
+    // Small delay to ensure any previous command responses have been received
+    delay(500);
+    flush_rx();
     uint8_t status_cmd = GET_STATUS;
     dev_uart->write_array(&status_cmd, 1);
 
@@ -167,50 +169,31 @@ inline int Z906::update()
     for (int i = 0; i < STATUS_TOTAL_LENGTH; i++)
         dev_uart->read_byte(&status[i]);
 
-    if (status[STATUS_STX] != EXP_STX) // TODO: ADD debug messages here
+    if (status[STATUS_STX] != EXP_STX)
+    {
+        ESP_LOGD("Z906", "Invalid STX: 0x%02X", status[STATUS_STX]);
         return 0;
+    }
     if (status[STATUS_MODEL] != EXP_MODEL_STATUS)
+    {
+        ESP_LOGD("Z906", "Invalid MODEL: 0x%02X", status[STATUS_MODEL]);
         return 0;
+    }
     if (status[STATUS_CHECKSUM] == LRC(status, STATUS_TOTAL_LENGTH))
         return 1;
 
+    ESP_LOGD("Z906", "Invalid CHECKSUM: 0x%02X", status[STATUS_CHECKSUM]);
     return 0;
 }
 
-inline int Z906::request(uint8_t cmd)
-{
-    flush_rx();
-    if (update())
-    {
-        if (cmd == VERSION)
-            return status[STATUS_VER_C] + 10 * status[STATUS_VER_B] + 100 * status[STATUS_VER_A];
-        if (cmd == CURRENT_INPUT)
-            return status[STATUS_CURRENT_INPUT] + 1;
-
-        return status[cmd];
-    }
-    return 0; // TODO: Check why all 0's are returned
-}
-
-inline int Z906::cmd(uint8_t cmd)
+inline void Z906::cmd(uint8_t cmd)
 {
     flush_rx();
     ESP_LOGD("Z906", "Sending command: 0x%02X", cmd);
     dev_uart->write_array(&cmd, 1);
-
-    unsigned long currentMillis = millis();
-
-    while (dev_uart->available() == 0)
-        if (millis() - currentMillis > SERIAL_TIME_OUT)
-            return 0;
-
-    uint8_t out; // TODO: read all responses
-    dev_uart->read_byte(&out);
-    ESP_LOGD("Z906", "Received response: 0x%02X", out);
-    return out;
 }
 
-inline int Z906::cmd(std::vector<uint8_t> cmd)
+inline void Z906::cmd(std::vector<uint8_t> cmd)
 {
     flush_rx();
     ESP_LOGD("Z906", "Sending command sequence:");
@@ -218,24 +201,33 @@ inline int Z906::cmd(std::vector<uint8_t> cmd)
     {
         ESP_LOGI("Z906", "  0x%02X", cmd[i]);
     }
-
     dev_uart->write_array(cmd.data(), cmd.size());
-
-    unsigned long currentMillis = millis();
-
-    while (dev_uart->available() == 0)
-        if (millis() - currentMillis > SERIAL_TIME_OUT)
-            return 0;
-
-    uint8_t out;
-    dev_uart->read_byte(&out);
-    ESP_LOGD("Z906", "Received response: 0x%02X", out);
-    return out;
 }
 
-inline void Z906::print_status()
+inline void Z906::read_buffer()
 {
-    flush_rx();
+    unsigned long currentMillis = millis();
+    while (dev_uart->available() == 0)
+        if (millis() - currentMillis > SERIAL_TIME_OUT)
+        {
+            ESP_LOGW("Z906", "No response received within timeout");
+            return;
+        }
+
+    // Add a small delay to ensure all bytes have arrived before reading
+    delay(500);
+
+    ESP_LOGD("Z906", "Reading buffer, %d bytes available:", dev_uart->available());
+    while (dev_uart->available() > 0)
+    {
+        uint8_t byte;
+        dev_uart->read_byte(&byte);
+        ESP_LOGD("Z906", "  0x%02X", byte);
+    }
+}
+
+inline void Z906::read_full_status()
+{
     update();
     ESP_LOGI("Z906", "Z906 Status:");
     ESP_LOGI("Z906", "\tMAIN_LEVEL: %d", status[STATUS_MAIN_LEVEL]);
@@ -254,7 +246,7 @@ inline void Z906::print_status()
     ESP_LOGI("Z906", "\tAUTO_STBY: %d", status[STATUS_AUTO_STBY]);
 }
 
-inline uint8_t Z906::main_sensor()
+inline uint8_t Z906::get_temperature()
 {
     flush_rx();
     uint8_t temp_cmd = GET_TEMP;
@@ -263,8 +255,13 @@ inline uint8_t Z906::main_sensor()
     unsigned long currentMillis = millis();
 
     while (dev_uart->available() < TEMP_TOTAL_LENGTH)
+    {
         if (millis() - currentMillis > SERIAL_TIME_OUT)
+        {
+            ESP_LOGW("Z906", "Timeout waiting for temperature response");
             return 0;
+        }
+    }
 
     uint8_t temp[TEMP_TOTAL_LENGTH];
 
@@ -274,6 +271,7 @@ inline uint8_t Z906::main_sensor()
     if (temp[2] != EXP_MODEL_TEMP)
         return 0;
 
+    ESP_LOGD("Z906", "Temperature response received, raw data: %d", temp[7]);
     return temp[7];
 }
 

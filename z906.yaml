@@ -45,266 +45,303 @@ captive_portal:
 # UART configuration for the protocol Z906
 uart:
   id: z906_uart
-  tx_pin: GPIO17 # PIN13 from Z906
-  rx_pin: GPIO16 # PIN12 from Z906
+  tx_pin: GPIO17 # PIN13
+  rx_pin: GPIO16 # PIN12
   baud_rate: 57600
   data_bits: 8
   parity: ODD
   stop_bits: 1
 
-switch:
-  - platform: gpio
-    pin: GPIO4
-    inverted: true
-    name: "Power Toggle"
+output:
+  - platform: ledc
+    pin: GPIO21
+    id: red_pin
+  - platform: ledc
+    pin: GPIO19
+    id: green_pin
+  - platform: ledc
+    pin: GPIO18
+    id: blue_pin
+
+light:
+  - platform: rgb
+    name: "Input Indicator"
+    id: input_indicator
+    internal: true
+    red: red_pin
+    green: green_pin
+    blue: blue_pin
+
+select:
+  - platform: template
+    name: "Input Select"
+    id: z906_input_select
+    optimistic: true
+    options:
+      - "Input 1 (3.5mm TRS)"
+      - "Input 2 (RCA)"
+      - "Input 3 (Optical)"
+      - "Input 4 (Optical)"
+      - "Input 5 (Coaxial)"
+      - "Input 6 (AUX)"
+    on_value:
+      then:
+        - lambda: |-
+            int input_num = i + 1;
+            switch(input_num) {
+              case 1: z906_device_global->input_1(); break;
+              case 2: z906_device_global->input_2(); break;
+              case 3: z906_device_global->input_3(); break;
+              case 4: z906_device_global->input_4(); break;
+              case 5: z906_device_global->input_5(); break;
+              case 6: z906_device_global->input_aux(); break;
+            }
+        - delay: 500ms
+        - button.press: read_full_status
+        - lambda: |-
+            // Store the newly selected input number for effect lookup
+            int newly_selected_input = i + 1;
+            // Get effect value for newly selected input
+            uint8_t effect_value = 0;
+            switch(newly_selected_input) {
+              case 1: effect_value = id(z906_effect_input_1).state; break;
+              case 2: effect_value = id(z906_effect_input_2).state; break;
+              case 3: effect_value = id(z906_effect_input_3).state; break;
+              case 4: effect_value = id(z906_effect_input_4).state; break;
+              case 5: effect_value = id(z906_effect_input_5).state; break;
+              case 6: effect_value = id(z906_effect_input_aux).state; break;
+            }
+            // Map effect value to option index
+            std::string effect_state;
+            switch((int)effect_value) {
+              case 0: effect_state = std::string("3D"); break;
+              case 1: effect_state = std::string("2.1"); break;
+              case 2: effect_state = std::string("4.1"); break;
+              case 3: effect_state = std::string("Off"); break;
+              default: effect_state = std::string("Off"); break;
+            }
+            id(z906_effect_select).publish_state(effect_state);
+
+            // Update RGB based on selected input
+            float r = 0, g = 0, b = 0;
+            switch(newly_selected_input) {
+              case 1: r = 1.0; g = 0.0; b = 0.0; break;  // Input 1: Red
+              case 2: r = 1.0; g = 1.0; b = 0.0; break;  // Input 2: Yellow
+              case 3: r = 0.0; g = 1.0; b = 0.0; break;  // Input 3: Green
+              case 4: r = 1.0; g = 0.0; b = 1.0; break;  // Input 4: Magenta
+              case 5: r = 0.0; g = 1.0; b = 1.0; break;  // Input 5: Cyan
+              case 6: r = 0.0; g = 0.0; b = 1.0; break;  // Input 6: Blue
+              default: r = 0.0; g = 0.0; b = 0.0; break; // Off
+            }
+            auto call = id(input_indicator).turn_on();
+            call.set_rgb(r, g, b);
+            call.perform();
+
+  - platform: template
+    name: "Effect Select"
+    id: z906_effect_select
+    options:
+      - "3D"
+      - "2.1"
+      - "4.1"
+      - "Off"
+    optimistic: true
+    on_value:
+      then:
+        - lambda: |-
+            int input_num = i;
+            switch(input_num) {
+              case 0: z906_device_global->cmd(SELECT_EFFECT_3D); break;
+              case 1: z906_device_global->cmd(SELECT_EFFECT_21); break;
+              case 2: z906_device_global->cmd(SELECT_EFFECT_41); break;
+              case 3: z906_device_global->cmd(SELECT_EFFECT_NO); break;
+            }
 
 button:
   - platform: restart
     name: "Restart ESP"
 
   - platform: template
-    name: "Standby ON"
+    name: "Power ON"
+    id: btn_power_on
     on_press:
       - lambda: |-
-          z906_device_global->standby_on();
-          id(z906_power_state).update();
+          z906_device_global->cmd(PWM_ON);
+      - button.press: read_full_status
+      - light.turn_on:
+          id: input_indicator
 
   - platform: template
-    name: "Standby OFF"
+    name: "Power OFF"
+    id: btn_power_off
     on_press:
       - lambda: |-
-          z906_device_global->standby_off();
-          id(z906_power_state).update();
+          z906_device_global->cmd(PWM_OFF);
+
+          // Ensure we unmute when exiting standby
+          z906_device_global->cmd(MUTE_OFF);
+          id(z906_mute_state).publish_state(false);
+      - button.press: read_full_status
+      - light.turn_off:
+          id: input_indicator
 
   - platform: template
     name: "Volume Mute ON"
+    id: btn_volume_mute_on
     on_press:
       - lambda: |-
-          z906_device_global->mute_on();
-          id(z906_mute_state).publish_state(1);
+          z906_device_global->cmd(MUTE_ON);
+          id(z906_mute_state).publish_state(true);
 
   - platform: template
     name: "Volume Mute OFF"
+    id: btn_volume_mute_off
     on_press:
       - lambda: |-
-          z906_device_global->mute_off();
-          id(z906_mute_state).publish_state(0);
-
-  # Input selection buttons
-  #input 1 TRS
-  - platform: template
-    name: "Input 1 (3.5mm TRS, 6 channels)"
-    on_press:
-      - lambda: |-
-          z906_device_global->input_1();
-      - delay: 500ms
-      - lambda: |-
-          id(z906_input_active).update();
-
-  # Input 2 (RCA, 2 channels)
-  - platform: template
-    name: "Input 2 (RCA, 2 channels)"
-    on_press:
-      - lambda: |-
-          z906_device_global->input_2();
-      - delay: 500ms
-      - lambda: |-
-          id(z906_input_active).update();
-
-  # Input 3 (Optical)
-  - platform: template
-    name: "Input 3 (Optical)"
-    on_press:
-      - lambda: |-
-          z906_device_global->input_3();
-      - delay: 500ms
-      - lambda: |-
-          id(z906_input_active).update();
-
-  # Input 4 (Optical)
-  - platform: template
-    name: "Input 4 (Optical)"
-    on_press:
-      - lambda: |-
-          z906_device_global->input_4();
-      - delay: 500ms
-      - lambda: |-
-          id(z906_input_active).update();
-
-  # Input 5 (RCA, S/PDIF 75Ω coaxial) (not 100% sure, i cannot test it)
-  - platform: template
-    name: "Input 5 (COAXIAL)"
-    on_press:
-      - lambda: |-
-          z906_device_global->input_5();
-      - delay: 500ms
-      - lambda: |-
-          id(z906_input_active).update();
-
-  # Input 6 AUX
-  - platform: template
-    name: "Input 6 (AUX)"
-    on_press:
-      - lambda: |-
-          z906_device_global->input_aux();
-      - delay: 500ms
-      - lambda: |-
-          id(z906_input_active).update();
+          z906_device_global->cmd(MUTE_OFF);
+          id(z906_mute_state).publish_state(false);
 
   - platform: template
     name: "Volume Main Up"
     on_press:
       - lambda: |-
-          z906_device_global->main_volume_up();
-          id(z906_main_volume).update();
+          z906_device_global->cmd(LEVEL_MAIN_UP);
+      - button.press: read_full_status
 
   - platform: template
     name: "Volume Main Down"
     on_press:
       - lambda: |-
-          z906_device_global->main_volume_down();
-          id(z906_main_volume).update();
+          z906_device_global->cmd(LEVEL_MAIN_DOWN);
+      - button.press: read_full_status
 
   - platform: template
     name: "Volume Sub Up"
     on_press:
       - lambda: |-
-          z906_device_global->sub_volume_up();
-          id(z906_sub_volume).update();
+          z906_device_global->cmd(LEVEL_SUB_UP);
+      - button.press: read_full_status
 
   - platform: template
     name: "Volume Sub Down"
     on_press:
       - lambda: |-
-          z906_device_global->sub_volume_down();
-          id(z906_sub_volume).update();
+          z906_device_global->cmd(LEVEL_SUB_DOWN);
+      - button.press: read_full_status
 
   - platform: template
     name: "Volume Center Up"
     on_press:
       - lambda: |-
-          z906_device_global->center_volume_up();
-          id(z906_center_volume).update();
+          z906_device_global->cmd(LEVEL_CENTER_UP);
+      - button.press: read_full_status
 
   - platform: template
     name: "Volume Center Down"
     on_press:
       - lambda: |-
-          z906_device_global->center_volume_down();
-          id(z906_center_volume).update();
+          z906_device_global->cmd(LEVEL_CENTER_DOWN);
+      - button.press: read_full_status
 
   - platform: template
     name: "Volume Rear Up"
     on_press:
       - lambda: |-
-          z906_device_global->rear_volume_up();
-          id(z906_rear_volume).update();
+          z906_device_global->cmd(LEVEL_REAR_UP);
+      - button.press: read_full_status
 
   - platform: template
     name: "Volume Rear Down"
     on_press:
       - lambda: |-
-          z906_device_global->rear_volume_down();
-          id(z906_rear_volume).update();
+          z906_device_global->cmd(LEVEL_REAR_DOWN);
+      - button.press: read_full_status
 
-  #Read full status command
+  # Read full status command
   - platform: template
     name: "Read Full Status"
+    id: read_full_status
     on_press:
       - lambda: |-
-          z906_device_global->get_full_status();
-
-  # Effects
-  - platform: template
-    name: "Effect 3D"
-    on_press:
-      - lambda: |-
-          z906_device_global->effect_3D();
-
-  - platform: template
-    name: "Effect 4.1"
-    on_press:
-      - lambda: |-
-          z906_device_global->effect_41();
-
-  - platform: template
-    name: "Effect 2.1"
-    on_press:
-      - lambda: |-
-          z906_device_global->effect_21();
-
-  - platform: template
-    name: "Effect Off"
-    on_press:
-      - lambda: |-
-          z906_device_global->effect_no();
-
-interval:
-  - interval: 100ms
-    then:
-      - lambda: |-
-          if (z906_device_global != nullptr) {
-              z906_device_global->loop();
-          }
+          auto status = z906_device_global->read_full_status();
+          // Update all sensors with the status array values
+          id(z906_power_state).publish_state(status[z906_device_global->z906->STATUS_STBY] == 0);
+          id(z906_input_active).publish_state(status[z906_device_global->z906->STATUS_CURRENT_INPUT]);
+          id(z906_volume_main).publish_state(status[z906_device_global->z906->STATUS_MAIN_LEVEL]);
+          id(z906_volume_rear).publish_state(status[z906_device_global->z906->STATUS_REAR_LEVEL]);
+          id(z906_volume_center).publish_state(status[z906_device_global->z906->STATUS_CENTER_LEVEL]);
+          id(z906_volume_sub).publish_state(status[z906_device_global->z906->STATUS_SUB_LEVEL]);
+          id(z906_effect_input_1).publish_state(status[z906_device_global->z906->STATUS_FX_INPUT_1]);
+          id(z906_effect_input_2).publish_state(status[z906_device_global->z906->STATUS_FX_INPUT_2]);
+          id(z906_effect_input_3).publish_state(status[z906_device_global->z906->STATUS_FX_INPUT_3]);
+          id(z906_effect_input_4).publish_state(status[z906_device_global->z906->STATUS_FX_INPUT_4]);
+          id(z906_effect_input_5).publish_state(status[z906_device_global->z906->STATUS_FX_INPUT_5]);
+          id(z906_effect_input_aux).publish_state(status[z906_device_global->z906->STATUS_FX_INPUT_AUX]);
 
 sensor:
   - platform: template
-    name: "Standby State"
-    id: z906_power_state
-    lambda: |-
-      return z906_device_global->get_power_status();
-    internal: true
-    update_interval: never
-  - platform: template
     name: "Input Active"
     id: z906_input_active
-    lambda: |-
-      return z906_device_global->get_current_input();
     update_interval: never
+
   - platform: template
     name: "Volume Main State"
-    id: z906_main_volume
-    lambda: |-
-      return z906_device_global->get_main_volume();
+    id: z906_volume_main
     update_interval: never
   - platform: template
     name: "Volume Rear State"
-    id: z906_rear_volume
-    lambda: |-
-      return z906_device_global->get_rear_volume();
+    id: z906_volume_rear
     update_interval: never
   - platform: template
     name: "Volume Center State"
-    id: z906_center_volume
-    lambda: |-
-      return z906_device_global->get_center_volume();
+    id: z906_volume_center
     update_interval: never
   - platform: template
     name: "Volume Sub State"
-    id: z906_sub_volume
-    lambda: |-
-      return z906_device_global->get_sub_volume();
+    id: z906_volume_sub
     update_interval: never
+
+  - platform: template
+    name: "Effect Input 1"
+    id: z906_effect_input_1
+    update_interval: never
+  - platform: template
+    name: "Effect Input 2"
+    id: z906_effect_input_2
+    update_interval: never
+  - platform: template
+    name: "Effect Input 3"
+    id: z906_effect_input_3
+    update_interval: never
+  - platform: template
+    name: "Effect Input 4"
+    id: z906_effect_input_4
+    update_interval: never
+  - platform: template
+    name: "Effect Input 5"
+    id: z906_effect_input_5
+    update_interval: never
+  - platform: template
+    name: "Effect Input Aux"
+    id: z906_effect_input_aux
+    update_interval: never
+
   - platform: template
     name: "Temperature"
     id: z906_temperature
     unit_of_measurement: "°C"
     lambda: |-
       return z906_device_global->get_temperature();
-    update_interval: never
-  - platform: template
-    name: "Volume Mute State"
-    id: z906_mute_state
-    lambda: |-
-      return 0;
-    update_interval: never
+    update_interval: 60s
 
 binary_sensor:
   - platform: template
-    name: "Standby State (ON/OFF)"
-    lambda: |-
-      return id(z906_power_state).state == 1;
+    name: "Power State (ON/OFF)"
+    id: z906_power_state
     device_class: power
+  - platform: template
+    name: "Volume Mute State"
+    id: z906_mute_state
 
 text:
   - platform: template
@@ -315,66 +352,4 @@ text:
     on_value:
       then:
         - lambda: |-
-            std::vector<uint8_t> bytes;
-
-            std::string input = x;
-
-            // Replace commas with spaces
-            for (auto &c : input) {
-              if (c == ',') c = ' ';
-            }
-
-            const char* ptr = input.c_str();
-            char* end;
-
-            while (*ptr != '\0') {
-              // Skip spaces
-              while (*ptr == ' ') ptr++;
-
-              if (*ptr == '\0') break;
-
-              unsigned long value = strtoul(ptr, &end, 0);
-
-              if (ptr == end) break;  // no conversion
-
-              if (value <= 255) {
-                bytes.push_back((uint8_t)value);
-              }
-
-              ptr = end;
-            }
-
-            if (!bytes.empty()) {
-              // Flush RX buffer before sending command
-              while (id(z906_uart).available() > 0) {
-                uint8_t dummy;
-                id(z906_uart).read_byte(&dummy);
-              }
-              delay(500);
-              // Send command
-              ESP_LOGI("z906", "Sending command: %d bytes", bytes.size());
-              id(z906_uart).write_array(bytes.data(), bytes.size());
-              ESP_LOGI("z906", "Sent %d bytes", bytes.size());
-              // Wait for response
-              delay(500);
-              int available = id(z906_uart).available();
-              ESP_LOGI("z906", "Bytes available after command: %d", available);
-              if (available > 0) {
-                std::vector<uint8_t> response(available);
-                id(z906_uart).read_array(response.data(), available);
-                std::string resp_str;
-                for (size_t i = 0; i < response.size(); i++) {
-                  char buf[4];
-                  snprintf(buf, sizeof(buf), "%02X", response[i]);
-                  resp_str += buf;
-                  if (i < response.size() - 1) {
-                    resp_str += " ";
-                  }
-                }
-                ESP_LOGI("z906", "Response (hex): %s", resp_str.c_str());
-              } else {
-                ESP_LOGI("z906", "No response received after command.");
-              }
-            } else {
-              ESP_LOGW("z906", "No valid bytes parsed");
-            }
+            z906_device_global->send_command_str(x);
