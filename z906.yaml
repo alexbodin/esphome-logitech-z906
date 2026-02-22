@@ -72,11 +72,32 @@ light:
     green: green_pin
     blue: blue_pin
 
+switch:
+  - platform: template
+    name: "Power"
+    id: main_power
+    device_class: outlet
+    lambda: |-
+      return id(z906_power_state).state;
+    turn_on_action:
+      - button.press: btn_power_on
+    turn_off_action:
+      - button.press: btn_power_off
+  - platform: template
+    name: "Mute"
+    id: mute_switch
+    device_class: switch
+    lambda: |-
+      return id(z906_mute_state).state;
+    turn_on_action:
+      - button.press: btn_volume_mute_on
+    turn_off_action:
+      - button.press: btn_volume_mute_off
+
 select:
   - platform: template
     name: "Input Select"
     id: z906_input_select
-    optimistic: true
     options:
       - "Input 1 (3.5mm TRS)"
       - "Input 2 (RCA)"
@@ -84,10 +105,21 @@ select:
       - "Input 4 (Optical)"
       - "Input 5 (Coaxial)"
       - "Input 6 (AUX)"
-    on_value:
-      then:
-        - lambda: |-
-            int input_num = i + 1;
+    lambda: |-
+      switch((int)id(z906_input_active).state) {
+        case 1: return std::string("Input 1 (3.5mm TRS)");
+        case 2: return std::string("Input 2 (RCA)");
+        case 3: return std::string("Input 3 (Optical)");
+        case 4: return std::string("Input 4 (Optical)");
+        case 5: return std::string("Input 5 (Coaxial)");
+        case 6: return std::string("Input 6 (AUX)");
+        default: return std::string("Unknown");
+      }
+    set_action:
+      - lambda: |-
+          auto idx = id(z906_input_select).index_of(x);
+          if (idx.has_value()) {
+            int input_num = (int)idx.value() + 1;
             switch(input_num) {
               case 1: z906_device_global->input_1(); break;
               case 2: z906_device_global->input_2(); break;
@@ -96,31 +128,14 @@ select:
               case 5: z906_device_global->input_5(); break;
               case 6: z906_device_global->input_aux(); break;
             }
-        - delay: 500ms
-        - button.press: read_full_status
-        - lambda: |-
-            // Store the newly selected input number for effect lookup
-            int newly_selected_input = i + 1;
-            // Get effect value for newly selected input
-            uint8_t effect_value = 0;
-            switch(newly_selected_input) {
-              case 1: effect_value = id(z906_effect_input_1).state; break;
-              case 2: effect_value = id(z906_effect_input_2).state; break;
-              case 3: effect_value = id(z906_effect_input_3).state; break;
-              case 4: effect_value = id(z906_effect_input_4).state; break;
-              case 5: effect_value = id(z906_effect_input_5).state; break;
-              case 6: effect_value = id(z906_effect_input_aux).state; break;
-            }
-            // Map effect value to option index
-            std::string effect_state;
-            switch((int)effect_value) {
-              case 0: effect_state = std::string("3D"); break;
-              case 1: effect_state = std::string("2.1"); break;
-              case 2: effect_state = std::string("4.1"); break;
-              case 3: effect_state = std::string("Off"); break;
-              default: effect_state = std::string("Off"); break;
-            }
-            id(z906_effect_select).publish_state(effect_state);
+          }
+      - delay: 500ms
+      - button.press: read_full_status
+      - lambda: |-
+          // Store the newly selected input number for effect lookup
+          auto idx = id(z906_input_select).index_of(x);
+          if (idx.has_value()) {
+            int newly_selected_input = (int)idx.value() + 1;
 
             // Update RGB based on selected input
             float r = 0, g = 0, b = 0;
@@ -136,6 +151,7 @@ select:
             auto call = id(input_indicator).turn_on();
             call.set_rgb(r, g, b);
             call.perform();
+          }
 
   - platform: template
     name: "Effect Select"
@@ -145,17 +161,137 @@ select:
       - "2.1"
       - "4.1"
       - "Off"
-    optimistic: true
-    on_value:
-      then:
-        - lambda: |-
-            int input_num = i;
+    lambda: |-
+      uint8_t effect_value = 0;
+      switch((int)id(z906_input_active).state) {
+        case 1: effect_value = id(z906_effect_input_1).state; break;
+        case 2: effect_value = id(z906_effect_input_2).state; break;
+        case 3: effect_value = id(z906_effect_input_3).state; break;
+        case 4: effect_value = id(z906_effect_input_4).state; break;
+        case 5: effect_value = id(z906_effect_input_5).state; break;
+        case 6: effect_value = id(z906_effect_input_aux).state; break;
+      }
+      switch((int)effect_value) {
+        case 0: return std::string("3D");
+        case 1: return std::string("2.1");
+        case 2: return std::string("4.1");
+        case 3: return std::string("Off");
+        default: return std::string("Off");
+      }
+    set_action:
+      - lambda: |-
+          auto idx = id(z906_effect_select).index_of(x);
+          if (idx.has_value()) {
+            int input_num = (int)idx.value();
             switch(input_num) {
               case 0: z906_device_global->cmd(SELECT_EFFECT_3D); break;
               case 1: z906_device_global->cmd(SELECT_EFFECT_21); break;
               case 2: z906_device_global->cmd(SELECT_EFFECT_41); break;
               case 3: z906_device_global->cmd(SELECT_EFFECT_NO); break;
             }
+          }
+      - button.press: read_full_status
+
+number:
+  - platform: template
+    name: "Volume Main"
+    id: volume_control_main
+    min_value: 0
+    max_value: 43
+    step: 1
+    device_class: sound_pressure
+    lambda: |-
+      return id(z906_volume_main).state;
+    set_action:
+      - lambda: |-
+          int target = (int)x;
+          int current = (int)id(z906_volume_main).state;
+          while (current < target) {
+            id(btn_volume_main_up).press();
+            delay(120);
+            current++;
+          }
+          while (current > target) {
+            id(btn_volume_main_down).press();
+            delay(120);
+            current--;
+          }
+      - button.press: read_full_status
+
+  - platform: template
+    name: "Volume Sub"
+    id: volume_control_sub
+    min_value: 0
+    max_value: 43
+    step: 1
+    device_class: sound_pressure
+    lambda: |-
+      return id(z906_volume_sub).state;
+    set_action:
+      - lambda: |-
+          int target = (int)x;
+          int current = (int)id(z906_volume_sub).state;
+          while (current < target) {
+            id(btn_volume_sub_up).press();
+            delay(120);
+            current++;
+          }
+          while (current > target) {
+            id(btn_volume_sub_down).press();
+            delay(120);
+            current--;
+          }
+      - button.press: read_full_status
+
+  - platform: template
+    name: "Volume Center"
+    id: volume_control_center
+    min_value: 0
+    max_value: 43
+    step: 1
+    device_class: sound_pressure
+    lambda: |-
+      return id(z906_volume_center).state;
+    set_action:
+      - lambda: |-
+          int target = (int)x;
+          int current = (int)id(z906_volume_center).state;
+          while (current < target) {
+            id(btn_volume_center_up).press();
+            delay(120);
+            current++;
+          }
+          while (current > target) {
+            id(btn_volume_center_down).press();
+            delay(120);
+            current--;
+          }
+      - button.press: read_full_status
+
+  - platform: template
+    name: "Volume Rear"
+    id: volume_control_rear
+    min_value: 0
+    max_value: 43
+    step: 1
+    device_class: sound_pressure
+    lambda: |-
+      return id(z906_volume_rear).state;
+    set_action:
+      - lambda: |-
+          int target = (int)x;
+          int current = (int)id(z906_volume_rear).state;
+          while (current < target) {
+            id(btn_volume_rear_up).press();
+            delay(120);
+            current++;
+          }
+          while (current > target) {
+            id(btn_volume_rear_down).press();
+            delay(120);
+            current--;
+          }
+      - button.press: read_full_status
 
 button:
   - platform: restart
@@ -164,6 +300,7 @@ button:
   - platform: template
     name: "Power ON"
     id: btn_power_on
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(PWM_ON);
@@ -174,10 +311,10 @@ button:
   - platform: template
     name: "Power OFF"
     id: btn_power_off
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(PWM_OFF);
-
           // Ensure we unmute when exiting standby
           z906_device_global->cmd(MUTE_OFF);
           id(z906_mute_state).publish_state(false);
@@ -188,6 +325,7 @@ button:
   - platform: template
     name: "Volume Mute ON"
     id: btn_volume_mute_on
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(MUTE_ON);
@@ -196,6 +334,7 @@ button:
   - platform: template
     name: "Volume Mute OFF"
     id: btn_volume_mute_off
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(MUTE_OFF);
@@ -203,70 +342,79 @@ button:
 
   - platform: template
     name: "Volume Main Up"
+    id: btn_volume_main_up
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(LEVEL_MAIN_UP);
-      - button.press: read_full_status
 
   - platform: template
     name: "Volume Main Down"
+    id: btn_volume_main_down
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(LEVEL_MAIN_DOWN);
-      - button.press: read_full_status
 
   - platform: template
     name: "Volume Sub Up"
+    id: btn_volume_sub_up
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(LEVEL_SUB_UP);
-      - button.press: read_full_status
 
   - platform: template
     name: "Volume Sub Down"
+    id: btn_volume_sub_down
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(LEVEL_SUB_DOWN);
-      - button.press: read_full_status
 
   - platform: template
     name: "Volume Center Up"
+    id: btn_volume_center_up
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(LEVEL_CENTER_UP);
-      - button.press: read_full_status
 
   - platform: template
     name: "Volume Center Down"
+    id: btn_volume_center_down
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(LEVEL_CENTER_DOWN);
-      - button.press: read_full_status
 
   - platform: template
     name: "Volume Rear Up"
+    id: btn_volume_rear_up
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(LEVEL_REAR_UP);
-      - button.press: read_full_status
 
   - platform: template
     name: "Volume Rear Down"
+    id: btn_volume_rear_down
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           z906_device_global->cmd(LEVEL_REAR_DOWN);
-      - button.press: read_full_status
 
   # Read full status command
   - platform: template
     name: "Read Full Status"
     id: read_full_status
+    entity_category: diagnostic
     on_press:
       - lambda: |-
           auto status = z906_device_global->read_full_status();
           // Update all sensors with the status array values
           id(z906_power_state).publish_state(status[z906_device_global->z906->STATUS_STBY] == 0);
-          id(z906_input_active).publish_state(status[z906_device_global->z906->STATUS_CURRENT_INPUT]);
+          id(z906_input_active).publish_state(status[z906_device_global->z906->STATUS_CURRENT_INPUT] + 1);
           id(z906_volume_main).publish_state(status[z906_device_global->z906->STATUS_MAIN_LEVEL]);
           id(z906_volume_rear).publish_state(status[z906_device_global->z906->STATUS_REAR_LEVEL]);
           id(z906_volume_center).publish_state(status[z906_device_global->z906->STATUS_CENTER_LEVEL]);
@@ -282,48 +430,59 @@ sensor:
   - platform: template
     name: "Input Active"
     id: z906_input_active
+    entity_category: diagnostic
     update_interval: never
 
   - platform: template
     name: "Volume Main State"
     id: z906_volume_main
+    entity_category: diagnostic
     update_interval: never
   - platform: template
     name: "Volume Rear State"
     id: z906_volume_rear
+    entity_category: diagnostic
     update_interval: never
   - platform: template
     name: "Volume Center State"
     id: z906_volume_center
+    entity_category: diagnostic
     update_interval: never
   - platform: template
     name: "Volume Sub State"
     id: z906_volume_sub
+    entity_category: diagnostic
     update_interval: never
 
   - platform: template
     name: "Effect Input 1"
     id: z906_effect_input_1
+    entity_category: diagnostic
     update_interval: never
   - platform: template
     name: "Effect Input 2"
     id: z906_effect_input_2
+    entity_category: diagnostic
     update_interval: never
   - platform: template
     name: "Effect Input 3"
     id: z906_effect_input_3
+    entity_category: diagnostic
     update_interval: never
   - platform: template
     name: "Effect Input 4"
     id: z906_effect_input_4
+    entity_category: diagnostic
     update_interval: never
   - platform: template
     name: "Effect Input 5"
     id: z906_effect_input_5
+    entity_category: diagnostic
     update_interval: never
   - platform: template
     name: "Effect Input Aux"
     id: z906_effect_input_aux
+    entity_category: diagnostic
     update_interval: never
 
   - platform: template
@@ -338,15 +497,17 @@ binary_sensor:
   - platform: template
     name: "Power State (ON/OFF)"
     id: z906_power_state
-    device_class: power
+    entity_category: diagnostic
   - platform: template
     name: "Volume Mute State"
     id: z906_mute_state
+    entity_category: diagnostic
 
 text:
   - platform: template
     name: "UART Binary Command"
     id: uart_command
+    entity_category: diagnostic
     optimistic: true
     mode: text
     on_value:
