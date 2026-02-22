@@ -36,8 +36,8 @@ captive_portal:
 # UART configuration for the protocol Z906
 uart:
   id: z906_uart
-  tx_pin: GPIO17
-  rx_pin: GPIO16
+  tx_pin: GPIO17 # PIN13 from Z906
+  rx_pin: GPIO16 # PIN12 from Z906
   baud_rate: 57600
   data_bits: 8
   parity: ODD
@@ -46,9 +46,17 @@ uart:
 #    direction: BOTH
 
 switch:
+  - platform: gpio
+    pin: GPIO4
+    inverted: true
+    name: "Z906 Power Toggle"
+
+button:
+  - platform: restart
+    name: "Restart ESP"
   - platform: template
-    name: "Z906 Power"
-    turn_on_action:
+    name: "Z906 Power ON"
+    on_press:
       - lambda: |-
           // Flush RX buffer
           while (id(z906_uart).available() > 0) {
@@ -62,7 +70,10 @@ switch:
           delay(300); // Wait for Z906 to update state
           // Update power state sensor
           id(z906_power_state).update();
-    turn_off_action:
+
+  - platform: template
+    name: "Z906 Power OFF"
+    on_press:
       - lambda: |-
           // Flush RX buffer
           while (id(z906_uart).available() > 0) {
@@ -81,9 +92,39 @@ switch:
           // Update power state sensor
           id(z906_power_state).update();
 
-button:
-  - platform: restart
-    name: "Restart ESP"
+  - platform: template
+    name: "Z906 Mute ON"
+    on_press:
+      - lambda: |-
+          // Flush RX buffer
+          while (id(z906_uart).available() > 0) {
+            uint8_t dummy;
+            id(z906_uart).read_byte(&dummy);
+          }
+          delay(100);
+          // Send MUTE ON command
+          uint8_t cmd = 0x38;
+          id(z906_uart).write_array(&cmd, 1);
+          delay(300); // Wait for Z906 to update state
+          // Update mute state sensor
+          id(z906_mute_state).update();
+
+  - platform: template
+    name: "Z906 Mute OFF"
+    on_press:
+      - lambda: |-
+          // Flush RX buffer
+          while (id(z906_uart).available() > 0) {
+            uint8_t dummy;
+            id(z906_uart).read_byte(&dummy);
+          }
+          delay(100);
+          // Send MUTE OFF command
+          uint8_t cmd = 0x39;
+          id(z906_uart).write_array(&cmd, 1);
+          delay(300); // Wait for Z906 to update state
+          // Update mute state sensor
+          id(z906_mute_state).update();
 
   # Input selection buttons
   #input 1 TRS
@@ -98,7 +139,7 @@ button:
           }
           delay(500);
           // Sequence: mute, input, effect, unmute
-          uint8_t seq[] = {0x09, 0x02, 0x14, 0x08};
+          uint8_t seq[] = {0x09, 0x02, 0x35, 0x08};
           id(z906_uart).write_array(seq, sizeof(seq));
       - delay: 500ms
       - lambda: |-
@@ -130,7 +171,7 @@ button:
             id(z906_uart).read_byte(&dummy);
           }
           delay(500);
-          uint8_t seq[] = {0x09, 0x03, 0x16, 0x08};
+          uint8_t seq[] = {0x09, 0x03, 0x14, 0x08};
           id(z906_uart).write_array(seq, sizeof(seq));
       - delay: 500ms
       - lambda: |-
@@ -166,26 +207,24 @@ button:
       - delay: 500ms
       - lambda: |-
           id(z906_input_active).update();
-
-  #VOLUME UP/DOWN
+  # Input 6 AUX
   - platform: template
-    name: "VOL+"
+    name: "Z906 Input 6 (AUX)"
     on_press:
       - lambda: |-
-          //  Flush RX buffer
           while (id(z906_uart).available() > 0) {
             uint8_t dummy;
-            id(z906_uart).read_byte(&dummy); 
+            id(z906_uart).read_byte(&dummy);
           }
           delay(500);
-          uint8_t seq[] = {0x08};
+          uint8_t seq[] = {0x09, 0x07, 0x16, 0x08};
           id(z906_uart).write_array(seq, sizeof(seq));
-          delay(500);
-          // After changing volume, force update of main volume sensor
-          id(z906_main_volume).update();
+      - delay: 500ms
+      - lambda: |-
+          id(z906_input_active).update();
 
   - platform: template
-    name: "VOL-"
+    name: "Main Volume Up"
     on_press:
       - lambda: |-
           // Flush RX buffer before sending command
@@ -194,11 +233,121 @@ button:
             id(z906_uart).read_byte(&dummy);
           }
           delay(500);
-          uint8_t seq[] = {0x09};
+          uint8_t seq[] = {0x08}; // LEVEL_MAIN_UP
           id(z906_uart).write_array(seq, sizeof(seq));
           delay(500);
-          // After changing volume, force update of main volume sensor
-          id(z906_main_volume).update();
+          id(z906_main_volume).update(); // Update main volume sensor
+
+  - platform: template
+    name: "Main Volume Down"
+    on_press:
+      - lambda: |-
+          // Flush RX buffer before sending command
+          while (id(z906_uart).available() > 0) {
+            uint8_t dummy;
+            id(z906_uart).read_byte(&dummy);
+          }
+          delay(500);
+          uint8_t seq[] = {0x09}; // LEVEL_MAIN_DOWN
+          id(z906_uart).write_array(seq, sizeof(seq));
+          delay(500);
+          id(z906_main_volume).update(); // Update main volume sensor
+
+  # Sub Level Up
+  - platform: template
+    name: "Sub Volume Up"
+    on_press:
+      - lambda: |-
+          // Flush RX buffer before sending command
+          while (id(z906_uart).available() > 0) {
+            uint8_t dummy;
+            id(z906_uart).read_byte(&dummy);
+          }
+          delay(500);
+          uint8_t seq[] = {0x0A}; // LEVEL_SUB_UP
+          id(z906_uart).write_array(seq, sizeof(seq));
+          delay(500);
+          id(z906_sub_volume).update(); // Update sub volume sensor
+
+  # Sub Level Down
+  - platform: template
+    name: "Sub Volume Down"
+    on_press:
+      - lambda: |-
+          // Flush RX buffer before sending command
+          while (id(z906_uart).available() > 0) {
+            uint8_t dummy;
+            id(z906_uart).read_byte(&dummy);
+          }
+          delay(500);
+          uint8_t seq[] = {0x0B}; // LEVEL_SUB_DOWN
+          id(z906_uart).write_array(seq, sizeof(seq));
+          delay(500);
+          id(z906_sub_volume).update(); // Update sub volume sensor
+
+  # Center Level Up
+  - platform: template
+    name: "Center Volume Up"
+    on_press:
+      - lambda: |-
+          // Flush RX buffer before sending command
+          while (id(z906_uart).available() > 0) {
+            uint8_t dummy;
+            id(z906_uart).read_byte(&dummy);
+          }
+          delay(500);
+          uint8_t seq[] = {0x0C}; // LEVEL_CENTER_UP
+          id(z906_uart).write_array(seq, sizeof(seq));
+          delay(500);
+          id(z906_center_volume).update(); // Update center volume sensor
+
+  # Center Level Down
+  - platform: template
+    name: "Center Volume Down"
+    on_press:
+      - lambda: |-
+          // Flush RX buffer before sending command
+          while (id(z906_uart).available() > 0) {
+            uint8_t dummy;
+            id(z906_uart).read_byte(&dummy);
+          }
+          delay(500);
+          uint8_t seq[] = {0x0D}; // LEVEL_CENTER_DOWN
+          id(z906_uart).write_array(seq, sizeof(seq));
+          delay(500);
+          id(z906_center_volume).update(); // Update center volume sensor
+
+  # Rear Level Up
+  - platform: template
+    name: "Rear Volume Up"
+    on_press:
+      - lambda: |-
+          // Flush RX buffer before sending command
+          while (id(z906_uart).available() > 0) {
+            uint8_t dummy;
+            id(z906_uart).read_byte(&dummy);
+          }
+          delay(500);
+          uint8_t seq[] = {0x0E}; // LEVEL_REAR_UP
+          id(z906_uart).write_array(seq, sizeof(seq));
+          delay(500);
+          id(z906_rear_volume).update(); // Update rear volume sensor
+
+  # Rear Level Down
+  - platform: template
+    name: "Rear Volume Down"
+    on_press:
+      - lambda: |-
+          // Flush RX buffer before sending command
+          while (id(z906_uart).available() > 0) {
+            uint8_t dummy;
+            id(z906_uart).read_byte(&dummy);
+          }
+          delay(500);
+          uint8_t seq[] = {0x0F}; // LEVEL_REAR_DOWN
+          id(z906_uart).write_array(seq, sizeof(seq));
+          delay(500);
+          id(z906_rear_volume).update(); // Update rear volume sensor
 
   #Read full status command
   - platform: template
@@ -281,6 +430,42 @@ sensor:
       }
       return NAN;
     update_interval: never
+  # Mute sensor
+  - platform: template
+    name: "Z906 Mute State"
+    #    internal: true
+    id: z906_mute_state
+    lambda: |-
+      // Flush RX buffer before sending command
+      while (id(z906_uart).available() > 0) {
+        uint8_t dummy;
+        id(z906_uart).read_byte(&dummy);
+      } 
+      uint8_t req[] = {0x34};
+      id(z906_uart).write_array(req, sizeof(req));
+      uint32_t start = millis();
+      // Wait for at least 23 bytes to arrive
+      while (id(z906_uart).available() < 23 && millis() - start < 200) {
+        delay(1);
+      }
+      // Find header 0xAA
+      while (id(z906_uart).available() >= 23) {
+        uint8_t peek;
+        id(z906_uart).peek_byte(&peek);
+        if (peek == 0xAA) {
+          uint8_t dummy;
+          id(z906_uart).read_byte(&dummy); // discard 0xAA
+          uint8_t resp[22];
+          id(z906_uart).read_array(resp, 22);
+          // resp[7]: 0x00 unmuted, 0x01 muted
+          return (resp[7] == 0x00) ? 1 : 0;
+        } else {
+          uint8_t dummy;
+          id(z906_uart).read_byte(&dummy);
+        }
+      }
+      return NAN;
+    update_interval: never
   #input sensor
   - platform: template
     name: "Z906 Input Active"
@@ -352,8 +537,146 @@ sensor:
              resp[0], resp[1], resp[2], resp[3], resp[4], resp[5], resp[6], resp[7],
              resp[8], resp[9], resp[10], resp[11], resp[12], resp[13], resp[14], resp[15],
              resp[16], resp[17], resp[18], resp[19], resp[20], resp[21]);
-           ESP_LOGI("z906", "Main volume (resp[3]): %d", resp[3]);
+           ESP_LOGI("z906", "Main volume (resp[2]): %d", resp[2]);
+           return resp[2];
+         } else {
+           uint8_t dummy;
+           id(z906_uart).read_byte(&dummy);
+         }
+       }
+       ESP_LOGW("z906", "No valid response found in UART buffer.");
+       return NAN;
+    update_interval: never
+  - platform: template
+    name: "Z906 Rear Volume"
+    internal: true
+    id: z906_rear_volume
+    lambda: |-
+      // Flush RX buffer before sending command
+       while (id(z906_uart).available() > 0) {
+         uint8_t dummy;
+         id(z906_uart).read_byte(&dummy);
+       }
+       uint8_t req[] = {0x34};
+       ESP_LOGI("z906", "Sending volume state request: 0x34");
+       id(z906_uart).write_array(req, sizeof(req));
+       uint32_t start = millis();
+       int wait_bytes = 0;
+       while (id(z906_uart).available() < 23 && millis() - start < 200) {
+         delay(1);
+         wait_bytes = id(z906_uart).available();
+       }
+       ESP_LOGI("z906", "Bytes available after wait: %d", wait_bytes);
+       int bytes_checked = 0;
+       while (id(z906_uart).available() >= 23) {
+         uint8_t peek;
+         id(z906_uart).peek_byte(&peek);
+         ESP_LOGI("z906", "Peek byte %d: %02X", bytes_checked, peek);
+         bytes_checked++;
+         if (peek == 0xAA) {
+           ESP_LOGI("z906", "Found header 0xAA, reading response...");
+           uint8_t dummy;
+           id(z906_uart).read_byte(&dummy); // discard 0xAA
+           uint8_t resp[22];
+           id(z906_uart).read_array(resp, 22);
+           ESP_LOGI("z906", "Response: AA %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+             resp[0], resp[1], resp[2], resp[3], resp[4], resp[5], resp[6], resp[7],
+             resp[8], resp[9], resp[10], resp[11], resp[12], resp[13], resp[14], resp[15],
+             resp[16], resp[17], resp[18], resp[19], resp[20], resp[21]);
+           ESP_LOGI("z906", "Rear volume (resp[3]): %d", resp[3]);
            return resp[3];
+         } else {
+           uint8_t dummy;
+           id(z906_uart).read_byte(&dummy);
+         }
+       }
+       ESP_LOGW("z906", "No valid response found in UART buffer.");
+       return NAN;
+    update_interval: never
+  - platform: template
+    name: "Z906 Center Volume"
+    internal: true
+    id: z906_center_volume
+    lambda: |-
+      // Flush RX buffer before sending command
+       while (id(z906_uart).available() > 0) {
+         uint8_t dummy;
+         id(z906_uart).read_byte(&dummy);
+       }
+       uint8_t req[] = {0x34};
+       ESP_LOGI("z906", "Sending volume state request: 0x34");
+       id(z906_uart).write_array(req, sizeof(req));
+       uint32_t start = millis();
+       int wait_bytes = 0;
+       while (id(z906_uart).available() < 23 && millis() - start < 200) {
+         delay(1);
+         wait_bytes = id(z906_uart).available();
+       }
+       ESP_LOGI("z906", "Bytes available after wait: %d", wait_bytes);
+       int bytes_checked = 0;
+       while (id(z906_uart).available() >= 23) {
+         uint8_t peek;
+         id(z906_uart).peek_byte(&peek);
+         ESP_LOGI("z906", "Peek byte %d: %02X", bytes_checked, peek);
+         bytes_checked++;
+         if (peek == 0xAA) {
+           ESP_LOGI("z906", "Found header 0xAA, reading response...");
+           uint8_t dummy;
+           id(z906_uart).read_byte(&dummy); // discard 0xAA
+           uint8_t resp[22];
+           id(z906_uart).read_array(resp, 22);
+           ESP_LOGI("z906", "Response: AA %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+             resp[0], resp[1], resp[2], resp[3], resp[4], resp[5], resp[6], resp[7],
+             resp[8], resp[9], resp[10], resp[11], resp[12], resp[13], resp[14], resp[15],
+             resp[16], resp[17], resp[18], resp[19], resp[20], resp[21]);
+           ESP_LOGI("z906", "Center volume (resp[4]): %d", resp[4]);
+           return resp[4];
+         } else {
+           uint8_t dummy;
+           id(z906_uart).read_byte(&dummy);
+         }
+       }
+       ESP_LOGW("z906", "No valid response found in UART buffer.");
+       return NAN;
+    update_interval: never
+  - platform: template
+    name: "Z906 Sub Volume"
+    internal: true
+    id: z906_sub_volume
+    lambda: |-
+      // Flush RX buffer before sending command
+       while (id(z906_uart).available() > 0) {
+         uint8_t dummy;
+         id(z906_uart).read_byte(&dummy);
+       }
+       uint8_t req[] = {0x34};
+       ESP_LOGI("z906", "Sending volume state request: 0x34");
+       id(z906_uart).write_array(req, sizeof(req));
+       uint32_t start = millis();
+       int wait_bytes = 0;
+       while (id(z906_uart).available() < 23 && millis() - start < 200) {
+         delay(1);
+         wait_bytes = id(z906_uart).available();
+       }
+       ESP_LOGI("z906", "Bytes available after wait: %d", wait_bytes);
+       int bytes_checked = 0;
+       while (id(z906_uart).available() >= 23) {
+         uint8_t peek;
+         id(z906_uart).peek_byte(&peek);
+         ESP_LOGI("z906", "Peek byte %d: %02X", bytes_checked, peek);
+         bytes_checked++;
+         if (peek == 0xAA) {
+           ESP_LOGI("z906", "Found header 0xAA, reading response...");
+           uint8_t dummy;
+           id(z906_uart).read_byte(&dummy); // discard 0xAA
+           uint8_t resp[22];
+           id(z906_uart).read_array(resp, 22);
+           ESP_LOGI("z906", "Response: AA %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+             resp[0], resp[1], resp[2], resp[3], resp[4], resp[5], resp[6], resp[7],
+             resp[8], resp[9], resp[10], resp[11], resp[12], resp[13], resp[14], resp[15],
+             resp[16], resp[17], resp[18], resp[19], resp[20], resp[21]);
+           ESP_LOGI("z906", "Center volume (resp[5]): %d", resp[5]);
+           return resp[5];
          } else {
            uint8_t dummy;
            id(z906_uart).read_byte(&dummy);
@@ -369,3 +692,76 @@ binary_sensor:
     lambda: |-
       return id(z906_power_state).state == 1;
     device_class: power
+
+text:
+  - platform: template
+    name: "UART Binary Command"
+    id: uart_command
+    optimistic: true
+    mode: text
+    on_value:
+      then:
+        - lambda: |-
+            std::vector<uint8_t> bytes;
+
+            std::string input = x;
+
+            // Replace commas with spaces
+            for (auto &c : input) {
+              if (c == ',') c = ' ';
+            }
+
+            const char* ptr = input.c_str();
+            char* end;
+
+            while (*ptr != '\0') {
+              // Skip spaces
+              while (*ptr == ' ') ptr++;
+
+              if (*ptr == '\0') break;
+
+              unsigned long value = strtoul(ptr, &end, 0);
+
+              if (ptr == end) break;  // no conversion
+
+              if (value <= 255) {
+                bytes.push_back((uint8_t)value);
+              }
+
+              ptr = end;
+            }
+
+            if (!bytes.empty()) {
+              // Flush RX buffer before sending command
+              while (id(z906_uart).available() > 0) {
+                uint8_t dummy;
+                id(z906_uart).read_byte(&dummy);
+              }
+              delay(500);
+              // Send command
+              ESP_LOGI("z906", "Sending command: %d bytes", bytes.size());
+              id(z906_uart).write_array(bytes.data(), bytes.size());
+              ESP_LOGI("z906", "Sent %d bytes", bytes.size());
+              // Wait for response
+              delay(500);
+              int available = id(z906_uart).available();
+              ESP_LOGI("z906", "Bytes available after command: %d", available);
+              if (available > 0) {
+                std::vector<uint8_t> response(available);
+                id(z906_uart).read_array(response.data(), available);
+                std::string resp_str;
+                for (size_t i = 0; i < response.size(); i++) {
+                  char buf[4];
+                  snprintf(buf, sizeof(buf), "%02X", response[i]);
+                  resp_str += buf;
+                  if (i < response.size() - 1) {
+                    resp_str += " ";
+                  }
+                }
+                ESP_LOGI("z906", "Response (hex): %s", resp_str.c_str());
+              } else {
+                ESP_LOGI("z906", "No response received after command.");
+              }
+            } else {
+              ESP_LOGW("z906", "No valid bytes parsed");
+            }
