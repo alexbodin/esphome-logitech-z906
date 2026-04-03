@@ -4,6 +4,8 @@ Logitech Z906 Control Library for ESPHome
 
 This project enables control of the Z906 unit without the console, using any device with a programmable serial port, eg an ESP32 microcontroller. Which then can be connected to home assistent via the ESPHome integration.
 
+**This fork describes the deployment with ESPHome Builder in Home Assistant and therefore has some minor changes.**
+
 # DE-15 Console Connector
 
 The communication between the Digital Audio Processor and the console is done through TTL serial communication at 3.3V.
@@ -43,7 +45,17 @@ D2-71583 is **NOT** 5V tolerant. If you have Arduino UNO, MEGA, etc use a **Logi
 | Parity          | Odd   |
 | Stop            | 1 bit |
 
-## Build and deploy
+## Build and deploy with ESPHome Builder in Home Assistant
+
+Use `samba-share` to upload the following into the folder `/config/esphome/z906/`:
+
+- `Z906.h`
+- `z906_component.h`
+- `z906_globals.h`
+
+Use the file `z906_home_assistant.yaml` to create a configuration in ESPHome Builder.
+
+## Build and deploy with esphome standalone
 
 Requirements:
 `pip intall esphome`

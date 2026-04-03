@@ -2,9 +2,9 @@ esphome:
   name: z906
   friendly_name: Logitech Z906
   includes:
-    - Z906.h
-    - z906_component.h
-    - z906_globals.h
+    - z906/Z906.h
+    - z906/z906_component.h
+    - z906/z906_globals.h
   on_boot:
     priority: 800.0
     then:
