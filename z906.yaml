@@ -65,7 +65,7 @@ output:
 
 light:
   - platform: rgb
-    name: "Input Indicator"
+    name: 'Input Indicator'
     id: input_indicator
     internal: true
     red: red_pin
@@ -74,7 +74,7 @@ light:
 
 switch:
   - platform: template
-    name: "Power"
+    name: 'Power'
     id: main_power
     device_class: outlet
     lambda: |-
@@ -84,7 +84,7 @@ switch:
     turn_off_action:
       - button.press: btn_power_off
   - platform: template
-    name: "Mute"
+    name: 'Mute'
     id: mute_switch
     device_class: switch
     lambda: |-
@@ -96,15 +96,15 @@ switch:
 
 select:
   - platform: template
-    name: "Input Select"
+    name: 'Input Select'
     id: z906_input_select
     options:
-      - "Input 1 (3.5mm TRS)"
-      - "Input 2 (RCA)"
-      - "Input 3 (Optical)"
-      - "Input 4 (Optical)"
-      - "Input 5 (Coaxial)"
-      - "Input 6 (AUX)"
+      - 'Input 1 (3.5mm TRS)'
+      - 'Input 2 (RCA)'
+      - 'Input 3 (Optical)'
+      - 'Input 4 (Optical)'
+      - 'Input 5 (Coaxial)'
+      - 'Input 6 (AUX)'
     lambda: |-
       switch((int)id(z906_input_active).state) {
         case 1: return std::string("Input 1 (3.5mm TRS)");
@@ -154,13 +154,13 @@ select:
           }
 
   - platform: template
-    name: "Effect Select"
+    name: 'Effect Select'
     id: z906_effect_select
     options:
-      - "3D"
-      - "2.1"
-      - "4.1"
-      - "Off"
+      - '3D'
+      - '2.1'
+      - '4.1'
+      - 'Off'
     lambda: |-
       uint8_t effect_value = 0;
       switch((int)id(z906_input_active).state) {
@@ -194,7 +194,7 @@ select:
 
 number:
   - platform: template
-    name: "Volume Main"
+    name: 'Volume Main'
     id: volume_control_main
     min_value: 0
     max_value: 43
@@ -219,7 +219,7 @@ number:
       - button.press: read_full_status
 
   - platform: template
-    name: "Volume Sub"
+    name: 'Volume Sub'
     id: volume_control_sub
     min_value: 0
     max_value: 43
@@ -244,7 +244,7 @@ number:
       - button.press: read_full_status
 
   - platform: template
-    name: "Volume Center"
+    name: 'Volume Center'
     id: volume_control_center
     min_value: 0
     max_value: 43
@@ -269,7 +269,7 @@ number:
       - button.press: read_full_status
 
   - platform: template
-    name: "Volume Rear"
+    name: 'Volume Rear'
     id: volume_control_rear
     min_value: 0
     max_value: 43
@@ -295,10 +295,10 @@ number:
 
 button:
   - platform: restart
-    name: "Restart ESP"
+    name: 'Restart ESP'
 
   - platform: template
-    name: "Power ON"
+    name: 'Power ON'
     id: btn_power_on
     entity_category: diagnostic
     on_press:
@@ -309,7 +309,7 @@ button:
           id: input_indicator
 
   - platform: template
-    name: "Power OFF"
+    name: 'Power OFF'
     id: btn_power_off
     entity_category: diagnostic
     on_press:
@@ -323,7 +323,7 @@ button:
           id: input_indicator
 
   - platform: template
-    name: "Volume Mute ON"
+    name: 'Volume Mute ON'
     id: btn_volume_mute_on
     entity_category: diagnostic
     on_press:
@@ -332,7 +332,7 @@ button:
           id(z906_mute_state).publish_state(true);
 
   - platform: template
-    name: "Volume Mute OFF"
+    name: 'Volume Mute OFF'
     id: btn_volume_mute_off
     entity_category: diagnostic
     on_press:
@@ -341,7 +341,7 @@ button:
           id(z906_mute_state).publish_state(false);
 
   - platform: template
-    name: "Volume Main Up"
+    name: 'Volume Main Up'
     id: btn_volume_main_up
     entity_category: diagnostic
     on_press:
@@ -349,7 +349,7 @@ button:
           z906_device_global->cmd(LEVEL_MAIN_UP);
 
   - platform: template
-    name: "Volume Main Down"
+    name: 'Volume Main Down'
     id: btn_volume_main_down
     entity_category: diagnostic
     on_press:
@@ -357,7 +357,7 @@ button:
           z906_device_global->cmd(LEVEL_MAIN_DOWN);
 
   - platform: template
-    name: "Volume Sub Up"
+    name: 'Volume Sub Up'
     id: btn_volume_sub_up
     entity_category: diagnostic
     on_press:
@@ -365,7 +365,7 @@ button:
           z906_device_global->cmd(LEVEL_SUB_UP);
 
   - platform: template
-    name: "Volume Sub Down"
+    name: 'Volume Sub Down'
     id: btn_volume_sub_down
     entity_category: diagnostic
     on_press:
@@ -373,7 +373,7 @@ button:
           z906_device_global->cmd(LEVEL_SUB_DOWN);
 
   - platform: template
-    name: "Volume Center Up"
+    name: 'Volume Center Up'
     id: btn_volume_center_up
     entity_category: diagnostic
     on_press:
@@ -381,7 +381,7 @@ button:
           z906_device_global->cmd(LEVEL_CENTER_UP);
 
   - platform: template
-    name: "Volume Center Down"
+    name: 'Volume Center Down'
     id: btn_volume_center_down
     entity_category: diagnostic
     on_press:
@@ -389,7 +389,7 @@ button:
           z906_device_global->cmd(LEVEL_CENTER_DOWN);
 
   - platform: template
-    name: "Volume Rear Up"
+    name: 'Volume Rear Up'
     id: btn_volume_rear_up
     entity_category: diagnostic
     on_press:
@@ -397,7 +397,7 @@ button:
           z906_device_global->cmd(LEVEL_REAR_UP);
 
   - platform: template
-    name: "Volume Rear Down"
+    name: 'Volume Rear Down'
     id: btn_volume_rear_down
     entity_category: diagnostic
     on_press:
@@ -406,7 +406,7 @@ button:
 
   # Read full status command
   - platform: template
-    name: "Read Full Status"
+    name: 'Read Full Status'
     id: read_full_status
     entity_category: diagnostic
     on_press:
@@ -428,84 +428,84 @@ button:
 
 sensor:
   - platform: template
-    name: "Input Active"
+    name: 'Input Active'
     id: z906_input_active
     entity_category: diagnostic
     update_interval: never
 
   - platform: template
-    name: "Volume Main State"
+    name: 'Volume Main State'
     id: z906_volume_main
     entity_category: diagnostic
     update_interval: never
   - platform: template
-    name: "Volume Rear State"
+    name: 'Volume Rear State'
     id: z906_volume_rear
     entity_category: diagnostic
     update_interval: never
   - platform: template
-    name: "Volume Center State"
+    name: 'Volume Center State'
     id: z906_volume_center
     entity_category: diagnostic
     update_interval: never
   - platform: template
-    name: "Volume Sub State"
+    name: 'Volume Sub State'
     id: z906_volume_sub
     entity_category: diagnostic
     update_interval: never
 
   - platform: template
-    name: "Effect Input 1"
+    name: 'Effect Input 1'
     id: z906_effect_input_1
     entity_category: diagnostic
     update_interval: never
   - platform: template
-    name: "Effect Input 2"
+    name: 'Effect Input 2'
     id: z906_effect_input_2
     entity_category: diagnostic
     update_interval: never
   - platform: template
-    name: "Effect Input 3"
+    name: 'Effect Input 3'
     id: z906_effect_input_3
     entity_category: diagnostic
     update_interval: never
   - platform: template
-    name: "Effect Input 4"
+    name: 'Effect Input 4'
     id: z906_effect_input_4
     entity_category: diagnostic
     update_interval: never
   - platform: template
-    name: "Effect Input 5"
+    name: 'Effect Input 5'
     id: z906_effect_input_5
     entity_category: diagnostic
     update_interval: never
   - platform: template
-    name: "Effect Input Aux"
+    name: 'Effect Input Aux'
     id: z906_effect_input_aux
     entity_category: diagnostic
     update_interval: never
 
   - platform: template
-    name: "Temperature"
+    name: 'Temperature'
     id: z906_temperature
-    unit_of_measurement: "°C"
+    unit_of_measurement: '°C'
     lambda: |-
       return z906_device_global->get_temperature();
     update_interval: 60s
 
 binary_sensor:
   - platform: template
-    name: "Power State (ON/OFF)"
+    name: 'Power State'
     id: z906_power_state
     entity_category: diagnostic
   - platform: template
-    name: "Volume Mute State"
+    name: 'Volume Mute State'
     id: z906_mute_state
     entity_category: diagnostic
 
 text:
   - platform: template
-    name: "UART Binary Command"
+    name: 'UART Binary Command'
     id: uart_command
     entity_category: diagnostic
     optimistic: true
